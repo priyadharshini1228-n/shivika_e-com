@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shivika E-Commerce</title>
+  <style>
+    :root{font-family:Inter,Arial,sans-serif;color:#202124;background:#f7f7fb}body{margin:0}header{background:#34205c;color:#fff;padding:24px max(5vw,20px)}header h1{margin:0 0 6px}header p{margin:0;color:#e8def8}.wrap{max-width:1200px;margin:28px auto;padding:0 20px}.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}.filters input,.filters select,.filters button{padding:11px;border:1px solid #ddd;border-radius:8px;background:#fff}.filters input{flex:1;min-width:180px}.filters button{background:#5d35a5;color:#fff;border:0;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}.card{background:white;border:1px solid #eceaf1;border-radius:14px;overflow:hidden;box-shadow:0 3px 12px #21143a08}.image{height:170px;background:#eee8f8;display:flex;align-items:center;justify-content:center;color:#725a9a}.image img{width:100%;height:100%;object-fit:cover}.content{padding:16px}.content h2{font-size:17px;margin:0 0 8px}.muted{color:#6f6b78;font-size:13px}.price{font-weight:700;color:#43217b;font-size:19px;margin:12px 0}.link{display:inline-block;text-decoration:none;color:#5d35a5;font-weight:600}.empty{background:white;padding:30px;border-radius:12px}.pagination{display:flex;justify-content:center;gap:14px;margin:24px}.pagination a{color:#5d35a5}footer{text-align:center;color:#777;padding:24px}
+  </style>
+</head>
+<body>
+<header><h1>Shivika</h1><p>Thoughtfully selected products, simple shopping.</p></header>
+<main class="wrap">
+  <form class="filters" method="get">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search products or SKU…" aria-label="Search products">
+    <select name="category" aria-label="Filter by category"><option value="">All categories</option>{% for category in categories %}<option value="{{ category.slug }}" {% if selected_category == category.slug %}selected{% endif %}>{{ category.name }}</option>{% endfor %}</select>
+    <button type="submit">Search</button>
+  </form>
+  {% if page_obj.object_list %}<section class="grid">{% for product in page_obj %}
+    <article class="card"><div class="image">{% if product.image %}<img src="{{ product.image }}" alt="{{ product.name }}">{% else %}<span>Shivika</span>{% endif %}</div><div class="content"><div class="muted">{{ product.category.name }}{% if product.sku %} · {{ product.sku }}{% endif %}</div><h2>{{ product.name }}</h2><div class="price">₹{{ product.price }}</div><a class="link" href="{% url 'product_detail' product.slug %}">View details →</a></div></article>
+  {% endfor %}</section><nav class="pagination">{% if page_obj.has_previous %}<a href="?q={{ query|urlencode }}&category={{ selected_category|urlencode }}&page={{ page_obj.previous_page_number }}">← Previous</a>{% endif %}<span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?q={{ query|urlencode }}&category={{ selected_category|urlencode }}&page={{ page_obj.next_page_number }}">Next →</a>{% endif %}</nav>{% else %}<div class="empty">No active products found. Add products and categories through the admin dashboard.</div>{% endif %}
+</main><footer>Shivika E-Commerce · Product catalogue</footer>
+</body></html>

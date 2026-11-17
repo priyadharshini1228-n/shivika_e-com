@@ -1,0 +1,67 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Good to see you, {{ user.get_short_name|default:user.username }}</h1>
+  <p class="saas-dashboard-intro">Your commerce operations at a glance. Choose a workspace to get started.</p>
+  <div class="saas-dashboard-grid">
+    {% if perms.ecommerce.view_product or perms.ecommerce.view_category %}
+    <section class="saas-dashboard-card">
+      <h2>Catalogue</h2>
+      <p>Keep your products and collections organized.</p>
+      <div class="saas-dashboard-links">
+        {% if perms.ecommerce.view_product %}<a href="{% url 'admin:ecommerce_product_changelist' %}">Products</a>{% endif %}
+        {% if perms.ecommerce.view_category %}<a href="{% url 'admin:ecommerce_category_changelist' %}">Categories</a>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+    {% if perms.ecommerce.view_purchaseorder or perms.ecommerce.view_supplier or perms.ecommerce.view_goodsreceipt %}
+    <section class="saas-dashboard-card">
+      <h2>Procurement</h2>
+      <p>Manage suppliers, purchase orders, and incoming deliveries.</p>
+      <div class="saas-dashboard-links">
+        {% if perms.ecommerce.view_purchaseorder %}<a href="{% url 'admin:ecommerce_purchaseorder_changelist' %}">Purchase orders</a>{% endif %}
+        {% if perms.ecommerce.view_supplier %}<a href="{% url 'admin:ecommerce_supplier_changelist' %}">Suppliers</a>{% endif %}
+        {% if perms.ecommerce.view_goodsreceipt %}<a href="{% url 'admin:ecommerce_goodsreceipt_changelist' %}">Goods receipts</a>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+    {% if perms.ecommerce.view_inventory or perms.ecommerce.view_stockmovement %}
+    <section class="saas-dashboard-card">
+      <h2>Inventory</h2>
+      <p>Monitor available stock and review inventory activity.</p>
+      <div class="saas-dashboard-links">
+        {% if perms.ecommerce.view_inventory %}<a href="{% url 'admin:ecommerce_inventory_changelist' %}">Stock levels</a>{% endif %}
+        {% if perms.ecommerce.view_stockmovement %}<a href="{% url 'admin:ecommerce_stockmovement_changelist' %}">Stock movements</a>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+    {% if perms.ecommerce.view_order or perms.ecommerce.view_orderitem or perms.ecommerce.view_cart or perms.ecommerce.view_payment or perms.ecommerce.view_user or perms.ecommerce.view_address %}
+    <section class="saas-dashboard-card">
+      <h2>Sales &amp; customers</h2>
+      <p>Review customer orders, payments, and account details.</p>
+      <div class="saas-dashboard-links">
+        {% if perms.ecommerce.view_order %}<a href="{% url 'admin:ecommerce_order_changelist' %}">Orders</a>{% endif %}
+        {% if perms.ecommerce.view_orderitem %}<a href="{% url 'admin:ecommerce_orderitem_changelist' %}">Order items</a>{% endif %}
+        {% if perms.ecommerce.view_payment %}<a href="{% url 'admin:ecommerce_payment_changelist' %}">Payments</a>{% endif %}
+        {% if perms.ecommerce.view_cart %}<a href="{% url 'admin:ecommerce_cart_changelist' %}">Carts</a>{% endif %}
+        {% if perms.ecommerce.view_user %}<a href="{% url 'admin:ecommerce_user_changelist' %}">Customers</a>{% endif %}
+        {% if perms.ecommerce.view_address %}<a href="{% url 'admin:ecommerce_address_changelist' %}">Addresses</a>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+    {% if perms.ecommerce.view_auditlog or perms.auth.view_user or perms.auth.view_group %}
+    <section class="saas-dashboard-card">
+      <h2>Administration</h2>
+      <p>Track important changes made across your workspace.</p>
+      <div class="saas-dashboard-links">
+        {% if perms.ecommerce.view_auditlog %}<a href="{% url 'admin:ecommerce_auditlog_changelist' %}">Audit log</a>{% endif %}
+        {% if perms.auth.view_user %}<a href="{% url 'admin:auth_user_changelist' %}">Staff accounts</a>{% endif %}
+        {% if perms.auth.view_group %}<a href="{% url 'admin:auth_group_changelist' %}">Roles &amp; groups</a>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

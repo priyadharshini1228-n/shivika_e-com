@@ -1,0 +1,19 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+<div id="content-main">
+  <p>Enter only the quantities physically delivered in this shipment. Blank quantities are ignored. Inventory is updated only after you post this receipt.</p>
+  {% if error_message %}<ul class="errorlist"><li>{{ error_message }}</li></ul>{% endif %}
+  <h2>{{ purchase_order.po_number }} — {{ purchase_order.supplier.name }}</h2>
+  <form method="post">{% csrf_token %}
+    <table>
+      <thead><tr><th>Product</th><th>SKU</th><th>Ordered</th><th>Already received</th><th>Remaining</th><th>Receive now</th></tr></thead>
+      <tbody>{% for item in items %}
+        <tr><td>{{ item.product.name }}</td><td>{{ item.product.sku|default:"—" }}</td><td>{{ item.quantity_ordered }}</td><td>{{ item.quantity_received }}</td><td>{{ item.quantity_remaining }}</td><td><input type="number" min="0.001" step="0.001" name="qty_{{ item.pk }}" placeholder="0.000"></td></tr>
+      {% endfor %}</tbody>
+    </table>
+    <p><label for="notes">Delivery notes</label><br><textarea name="notes" id="notes" rows="3" cols="70"></textarea></p>
+    <div class="submit-row"><input type="submit" value="Post receipt" class="default"> <a href="{% url 'admin:ecommerce_purchaseorder_change' purchase_order.pk %}">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}

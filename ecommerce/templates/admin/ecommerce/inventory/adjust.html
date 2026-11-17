@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div id="content-main">
+  <h2>{{ product.name }}{% if product.sku %} ({{ product.sku }}){% endif %}</h2>
+  <p>Current on-hand: {% if inventory %}{{ inventory.quantity_on_hand }}{% else %}0.000{% endif %}; reserved: {% if inventory %}{{ inventory.quantity_reserved }}{% else %}0.000{% endif %}</p>
+  <p>Use a positive quantity to add stock and a negative quantity to reduce stock. Every adjustment requires a reason and creates a permanent ledger entry.</p>
+  {% if error_message %}<ul class="errorlist"><li>{{ error_message }}</li></ul>{% endif %}
+  <form method="post">{% csrf_token %}
+    <div class="form-row"><label for="quantity_delta">Quantity change</label><br><input required type="number" step="0.001" name="quantity_delta" id="quantity_delta"></div>
+    <div class="form-row"><label for="movement_type">Movement type</label><br><select name="movement_type" id="movement_type"><option value="adjustment">Adjustment</option><option value="opening">Opening balance</option><option value="damage">Damage</option><option value="return">Return</option></select></div>
+    <div class="form-row"><label for="reason">Reason (required)</label><br><input required type="text" name="reason" id="reason" maxlength="255" size="70"></div>
+    <div class="form-row"><label for="reference">Reference (optional)</label><br><input type="text" name="reference" id="reference" maxlength="100" size="50"></div>
+    <div class="submit-row"><input type="submit" class="default" value="Save stock movement"> <a href="{% url 'admin:ecommerce_inventory_changelist' %}">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}
