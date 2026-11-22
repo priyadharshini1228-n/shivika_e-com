@@ -1,6 +1,10 @@
 import json
+from decimal import Decimal
+
 from django.contrib import admin, messages
+from django.contrib.admin import AdminSite
 from django.core.exceptions import ValidationError
+from django.db.models import Count, F, Q, Sum
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -12,7 +16,58 @@ from .models import (
     Inventory, Order, OrderItem, Payment, Product, PurchaseItem,
     PurchaseOrder, StockMovement, Supplier, User,
 )
-from .services import place_purchase_order, post_goods_receipt
+from .services import place_purchase_order, post_goods_receipt, create_delivered_receipt
+from django.contrib.auth.admin import UserAdmin, GroupAdmin
+from django.contrib.auth.models import Group, User as AuthUser
+
+
+class ShivikaAdminSite(AdminSite):
+    site_header = 'Shivika E-Commerce Administration'
+    site_title = 'Shivika Admin'
+    index_title = 'Catalogue, purchasing and inventory operations'
+
+    def index(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context.update(self.dashboard_stats())
+        return super().index(request, extra_context)
+
+    def dashboard_stats(self):
+        products = Product.objects.count()
+        active_products = Product.objects.filter(is_active=True).count()
+        categories = Category.objects.count()
+        orders = Order.objects.count()
+        pending_orders = Order.objects.filter(status='Pending').count()
+        delivered_orders = Order.objects.filter(status='Delivered').count()
+        open_pos = PurchaseOrder.objects.filter(status__in=('draft', 'ordered', 'partially_received')).count()
+        inventory_value = (
+            Inventory.objects.aggregate(total=Sum(F('quantity_on_hand') * F('product__cost_price')))['total']
+            or Decimal('0.00')
+        )
+        low_stock = Product.objects.filter(
+            is_active=True,
+            inventory__quantity_on_hand__lte=F('reorder_level') + F('inventory__quantity_reserved'),
+        ).count()
+        recent = list(AuditLog.objects.order_by('-created_at')[:6])
+        return {
+            'stats': {
+                'products': products, 'active_products': active_products,
+                'categories': categories, 'orders': orders,
+                'pending_orders': pending_orders, 'delivered_orders': delivered_orders,
+                'open_pos': open_pos, 'inventory_value': inventory_value,
+                'low_stock': low_stock,
+            },
+            'recent_audit': recent,
+        }
+
+
+admin_site = ShivikaAdminSite(name='admin')
+# Replace the default site everywhere so @admin.register and admin.site.urls use our custom site.
+admin.site = admin_site
+import django.contrib.admin.sites as _admin_sites
+_admin_sites.site = admin_site
+# Register auth models on the custom site (they were registered on the default site before the swap).
+admin_site.register(AuthUser, UserAdmin)
+admin_site.register(Group, GroupAdmin)
 
 
 @admin.register(Category)
@@ -36,7 +91,7 @@ class ProductAdmin(admin.ModelAdmin):
         try:
             return obj.inventory.quantity_available
         except Inventory.DoesNotExist:
-            return 'Not initialized'
+            return obj.stock
 
 
 @admin.register(Supplier)
@@ -132,10 +187,10 @@ class GoodsReceiptItemInline(admin.TabularInline):
 
 @admin.register(GoodsReceipt)
 class GoodsReceiptAdmin(admin.ModelAdmin):
-    list_display = ('receipt_number', 'purchase_order', 'status', 'received_by', 'received_at')
+    list_display = ('receipt_number', 'purchase_order', 'source_order', 'status', 'received_by', 'received_at')
     list_filter = ('status', 'received_at')
-    search_fields = ('receipt_number', 'purchase_order__po_number')
-    readonly_fields = ('receipt_number', 'purchase_order', 'status', 'received_by', 'received_at', 'notes', 'idempotency_key')
+    search_fields = ('receipt_number', 'purchase_order__po_number', 'source_order__order_number')
+    readonly_fields = ('receipt_number', 'purchase_order', 'source_order', 'status', 'received_by', 'received_at', 'notes', 'idempotency_key')
     inlines = [GoodsReceiptItemInline]
     actions = None
 
@@ -232,8 +287,70 @@ class AuditLogAdmin(admin.ModelAdmin):
         return False
 
 
-# Existing commerce records remain available in Django admin.
-for model in (User, Address, Order, OrderItem, Cart, Payment):
+@admin.register(User)
+class LegacyUserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_active', 'date_joined')
+    list_filter = ('is_active', 'date_joined')
+    search_fields = ('username', 'email', 'first_name', 'last_name', 'phone')
+    readonly_fields = ('date_joined',)
+
+    def get_queryset(self, request):
+        # Superusers and staff are managed under auth.User (Staff accounts), not Customers.
+        # The legacy ecommerce.User table does not reliably carry staff flags, so also exclude
+        # any legacy record whose username matches a staff/superuser auth account.
+        staff_usernames = set(
+            AuthUser.objects.filter(Q(is_staff=True) | Q(is_superuser=True))
+            .values_list('username', flat=True)
+        )
+        return (
+            super().get_queryset(request)
+            .filter(is_superuser=False, is_staff=False)
+            .exclude(username__in=staff_usernames)
+        )
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ('order_number', 'user', 'status', 'payment_status', 'total_amount', 'created_at', 'receipt_status')
+    list_filter = ('status', 'payment_status', 'created_at')
+    search_fields = ('order_number', 'user__username')
+    readonly_fields = ('order_number', 'created_at')
+    actions = ['mark_delivered_and_receive']
+
+    @admin.display(description='Goods receipt')
+    def receipt_status(self, obj):
+        receipt = obj.goods_receipts.first()
+        if receipt:
+            url = reverse('admin:ecommerce_goodsreceipt_change', args=[receipt.pk])
+            return format_html('<a href="{}">{}</a>', url, receipt.receipt_number)
+        return '—'
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if change and obj.status == 'Delivered':
+            try:
+                create_delivered_receipt(order=obj, actor=request.user)
+            except ValidationError as exc:
+                self.message_user(request, '; '.join(exc.messages), level=messages.ERROR)
+
+    @admin.action(description='Mark selected orders delivered and post goods receipt')
+    def mark_delivered_and_receive(self, request, queryset):
+        moved = 0
+        for order in queryset:
+            if order.status == 'Delivered':
+                continue
+            order.status = 'Delivered'
+            order.save(update_fields=['status'])
+            try:
+                create_delivered_receipt(order=order, actor=request.user)
+                moved += 1
+            except ValidationError as exc:
+                self.message_user(request, f'{order.order_number}: {exc}', level=messages.ERROR)
+        if moved:
+            self.message_user(request, f'{moved} order(s) marked delivered. Goods receipts posted where open purchase-order lines existed.', level=messages.SUCCESS)
+
+
+for model in (Address, OrderItem, Cart, Payment):
     try:
         admin.site.register(model)
     except admin.sites.AlreadyRegistered:

@@ -4,7 +4,39 @@
 {% block content %}
 <div id="content-main">
   <h1>Good to see you, {{ user.get_short_name|default:user.username }}</h1>
-  <p class="saas-dashboard-intro">Your commerce operations at a glance. Choose a workspace to get started.</p>
+  <p class="saas-dashboard-intro">Your commerce operations at a glance. Here is what is happening across your workspace.</p>
+
+  <div class="saas-kpi-grid">
+    <div class="saas-kpi">
+      <div class="saas-kpi__label"><span class="saas-kpi__icon">&#128230;</span> Products</div>
+      <div class="saas-kpi__value" data-count="{{ stats.products }}">{{ stats.products }}</div>
+      <div class="saas-kpi__hint">{{ stats.active_products }} active</div>
+    </div>
+    <div class="saas-kpi">
+      <div class="saas-kpi__label"><span class="saas-kpi__icon">&#128722;</span> Orders</div>
+      <div class="saas-kpi__value" data-count="{{ stats.orders }}">{{ stats.orders }}</div>
+      <div class="saas-kpi__hint">{{ stats.pending_orders }} pending · {{ stats.delivered_orders }} delivered</div>
+    </div>
+    <div class="saas-kpi">
+      <div class="saas-kpi__label"><span class="saas-kpi__icon">&#128221;</span> Open POs</div>
+      <div class="saas-kpi__value" data-count="{{ stats.open_pos }}">{{ stats.open_pos }}</div>
+      <div class="saas-kpi__hint">Draft, ordered &amp; partial</div>
+    </div>
+    <div class="saas-kpi">
+      <div class="saas-kpi__label"><span class="saas-kpi__icon">&#128176;</span> Inventory value</div>
+      <div class="saas-kpi__value" data-count="{{ stats.inventory_value }}">&#8377;{{ stats.inventory_value }}</div>
+      <div class="saas-kpi__hint">On-hand × cost</div>
+    </div>
+  </div>
+
+  {% if stats.low_stock %}
+  <div class="saas-kpi" style="border-color:#fde68a;background:#fffbeb;margin-bottom:26px">
+    <div class="saas-kpi__label" style="color:var(--warning)"><span class="saas-kpi__icon" style="background:#fef3c7;color:var(--warning)">&#9888;</span> Low stock alert</div>
+    <div class="saas-kpi__value" data-count="{{ stats.low_stock }}" style="color:var(--warning)">{{ stats.low_stock }}</div>
+    <div class="saas-kpi__hint saas-kpi__hint--warn">Products at or below reorder level</div>
+  </div>
+  {% endif %}
+
   <div class="saas-dashboard-grid">
     {% if perms.ecommerce.view_product or perms.ecommerce.view_category %}
     <section class="saas-dashboard-card">
@@ -51,15 +83,19 @@
       </div>
     </section>
     {% endif %}
-    {% if perms.ecommerce.view_auditlog or perms.auth.view_user or perms.auth.view_group %}
+    {% if recent_audit %}
     <section class="saas-dashboard-card">
-      <h2>Administration</h2>
-      <p>Track important changes made across your workspace.</p>
-      <div class="saas-dashboard-links">
-        {% if perms.ecommerce.view_auditlog %}<a href="{% url 'admin:ecommerce_auditlog_changelist' %}">Audit log</a>{% endif %}
-        {% if perms.auth.view_user %}<a href="{% url 'admin:auth_user_changelist' %}">Staff accounts</a>{% endif %}
-        {% if perms.auth.view_group %}<a href="{% url 'admin:auth_group_changelist' %}">Roles &amp; groups</a>{% endif %}
-      </div>
+      <h2>Recent activity</h2>
+      <p>Latest changes across your workspace.</p>
+      <ul class="saas-activity-list">
+        {% for entry in recent_audit %}
+        <li>
+          <span class="badge">{{ entry.action }}</span>
+          <span>{{ entry.entity_type }} #{{ entry.entity_id }}</span>
+          <span class="meta">{{ entry.created_at|date:"M d, H:i" }}</span>
+        </li>
+        {% endfor %}
+      </ul>
     </section>
     {% endif %}
   </div>

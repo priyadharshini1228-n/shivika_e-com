@@ -224,6 +224,7 @@ class GoodsReceipt(models.Model):
     STATUS_CHOICES = [(STATUS_DRAFT, 'Draft'), (STATUS_POSTED, 'Posted')]
     receipt_number = models.CharField(max_length=40, unique=True)
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name='receipts')
+    source_order = models.ForeignKey('Order', on_delete=models.PROTECT, related_name='goods_receipts', null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_DRAFT)
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='goods_receipts')
     received_at = models.DateTimeField(default=timezone.now)
@@ -233,6 +234,9 @@ class GoodsReceipt(models.Model):
     class Meta:
         db_table = 'goods_receipts'
         ordering = ['-received_at']
+        constraints = [
+            models.UniqueConstraint(fields=['source_order'], condition=models.Q(source_order__isnull=False), name='unique_source_order_receipt'),
+        ]
 
     def __str__(self):
         return self.receipt_number

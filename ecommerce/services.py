@@ -8,8 +8,8 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    AuditLog, GoodsReceipt, GoodsReceiptItem, Inventory, Product,
-    PurchaseItem, PurchaseOrder, StockMovement,
+    AuditLog, GoodsReceipt, GoodsReceiptItem, Inventory, Order, OrderItem,
+    Product, PurchaseItem, PurchaseOrder, StockMovement,
 )
 
 
@@ -143,6 +143,84 @@ def post_goods_receipt(*, purchase_order_id, actor, lines, receipt_number=None, 
     po.save(update_fields=['status'])
     AuditLog.objects.create(actor=actor, action='goods_receipt_posted', entity_type='GoodsReceipt', entity_id=str(receipt.pk), details={'receipt_number': receipt.receipt_number, 'po_number': po.po_number, 'lines': len(receipt_items)})
     return receipt
+
+
+@transaction.atomic
+def create_delivered_receipt(*, order, actor):
+    """Create a posted goods receipt for a Delivered order's line items.
+
+    Returns the GoodsReceipt or None if there was nothing to receive.
+    Idempotent: a unique source_order constraint prevents duplicate receipts.
+    """
+    if not actor.is_authenticated or not (actor.is_superuser or actor.has_perm('ecommerce.add_goodsreceipt')):
+        raise ValidationError('You do not have permission to receive goods.')
+    existing = GoodsReceipt.objects.filter(source_order=order).first()
+    if existing:
+        return existing
+
+    order_items = list(order.items.select_related('product').all())
+    if not order_items:
+        return None
+
+    product_ids = {item.product_id for item in order_items}
+    candidate_items = list(
+        PurchaseItem.objects.select_related('purchase_order')
+        .filter(product_id__in=product_ids,
+                purchase_order__status__in=(PurchaseOrder.STATUS_ORDERED, PurchaseOrder.STATUS_PARTIAL))
+        .order_by('purchase_order__created_at', 'id')
+    )
+
+    lines = []
+    covered = set()
+    for item in order_items:
+        matched = None
+        for pi in candidate_items:
+            if pi.product_id != item.product_id or pi.pk in covered:
+                continue
+            remaining = pi.quantity_remaining
+            if remaining <= 0:
+                continue
+            matched = pi
+            break
+        if matched is None:
+            AuditLog.objects.create(
+                actor=actor, action='goods_receipt_skipped_no_po',
+                entity_type='Order', entity_id=str(order.pk),
+                details={'order_number': order.order_number, 'product_id': item.product_id,
+                         'quantity': item.quantity, 'reason': 'No open purchase-order line for delivered item'},
+            )
+            continue
+        qty = Decimal(item.quantity)
+        if qty > matched.quantity_remaining:
+            qty = matched.quantity_remaining
+        lines.append({'purchase_item_id': matched.pk, 'quantity': str(qty)})
+        covered.add(matched.pk)
+
+    if not lines:
+        return None
+
+    receipts_by_po = {}
+    for line in lines:
+        pi = PurchaseItem.objects.select_related('purchase_order').get(pk=line['purchase_item_id'])
+        receipts_by_po.setdefault(pi.purchase_order_id, []).append(line)
+
+    created = []
+    for po_id, po_lines in receipts_by_po.items():
+        receipt = post_goods_receipt(
+            purchase_order_id=po_id, actor=actor, lines=po_lines,
+            notes=f'Delivered order {order.order_number}',
+        )
+        GoodsReceipt.objects.filter(pk=receipt.pk).update(source_order=order)
+        receipt.refresh_from_db()
+        created.append(receipt)
+
+    for receipt in created:
+        AuditLog.objects.create(
+            actor=actor, action='delivered_receipt_created', entity_type='GoodsReceipt',
+            entity_id=str(receipt.pk),
+            details={'receipt_number': receipt.receipt_number, 'order_number': order.order_number},
+        )
+    return created[0] if len(created) == 1 else created
 
 
 @transaction.atomic
